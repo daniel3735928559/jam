@@ -14,6 +14,12 @@
 #include <stdio.h>
 #include <fcntl.h>
 
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h> 
+
 #define CUSTOM_USER_DIRECTORY  "/dev/null"
 #define CUSTOM_PLUGIN_PATH     ""
 #define PLUGIN_SAVE_PREF       "/purple/user/plugins/saved"
@@ -236,6 +242,80 @@ cred_t *read_creds(const char *fn){
   return c;
 }
 
+void error(const char *msg)
+{
+    perror(msg);
+    exit(0);
+}
+
+static gboolean gio_in(GIOChannel *gio, GIOCondition condition, gpointer data)
+{
+  GIOStatus ret;
+  GError *err = NULL;
+  gchar *msg;
+  gsize len;
+  
+  if (condition & G_IO_HUP)
+    g_error ("Read end of pipe died!\n");
+  
+  ret = g_io_channel_read_line (gio, &msg, &len, NULL, &err);
+  if (ret == G_IO_STATUS_ERROR)
+    g_error ("Error reading: %s\n", err->message);
+  
+  printf ("Read %u bytes: %s\n", len, msg);
+  
+  g_free (msg);
+  
+  return TRUE;
+}
+
+
+int connect_sock(const char *hostname, int port)
+{
+    int sockfd, portno, n;
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+
+    char buffer[256];
+    portno = port;
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) 
+        error("ERROR opening socket");
+    server = gethostbyname(hostname);
+    if (server == NULL) {
+        fprintf(stderr,"ERROR, no such host\n");
+        exit(0);
+    }
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, 
+         (char *)&serv_addr.sin_addr.s_addr,
+         server->h_length);
+    serv_addr.sin_port = htons(portno);
+    if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
+        error("ERROR connecting");
+
+    return sockfd;
+    bzero(buffer,256);
+    n = read(sockfd,buffer,255);
+    if (n < 0) 
+         error("ERROR reading from socket");
+    printf("%s\n",buffer);
+    close(sockfd);
+    return 0;
+}
+
+void init_sock(){
+  GIOChannel *gio;
+  int fd = connect_sock("localhost", 1919);
+  gio = g_io_channel_unix_new (fd);
+  if (!gio)
+    g_error ("Cannot create new GIOChannel!\n");
+  
+  if (!g_io_add_watch (gio, G_IO_IN | G_IO_HUP, gio_in, NULL))
+    g_error ("Cannot add watch on GIOChannel!\n");
+}
+
 int main(int argc, char *argv[]){
   GMainLoop *loop = g_main_loop_new(NULL, FALSE);
 
@@ -251,7 +331,8 @@ int main(int argc, char *argv[]){
   printf("libpurple initialized. Running version %s.\n", purple_core_get_version()); //I like to see the version number
 
   cred_t *c = read_creds("./.creds");
-  
+
+  init_sock();
   connect_to_signals();
 
   PurpleAccount *account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.

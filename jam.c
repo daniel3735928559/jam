@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <stdio.h>
+#include <fcntl.h>
 
 #define CUSTOM_USER_DIRECTORY  "/dev/null"
 #define CUSTOM_PLUGIN_PATH     ""
@@ -208,6 +209,33 @@ static void connect_to_signals(void){
   purple_signal_connect(purple_conversations_get_handle(), "received-im-msg", &handle, PURPLE_CALLBACK(received_im_msg), NULL);
 }
 
+typedef struct cred{
+  char *un;
+  char *pw;
+} cred_t;
+
+cred_t *read_creds(const char *fn){
+  int len = 1000;
+  char *un = malloc(len);
+  int cred_file = open(fn, O_RDONLY);
+  if(read(cred_file, un, len) < 0) exit(-1);
+  close(cred_file);
+  un[len-1] = 0;
+  un[len-2] = '\n';
+  un[len-3] = '\n';
+  char *pw = un;
+  while(*pw != '\n') pw++;
+  *(pw++) = 0;
+  char *pw_end = pw;
+  while(*pw_end != '\n') pw_end++;
+  *pw_end = 0;
+  cred_t *c = malloc(sizeof(cred_t));
+  c->un = strdup(un);
+  c->pw = strdup(pw);
+  free(un);
+  return c;
+}
+
 int main(int argc, char *argv[]){
   GMainLoop *loop = g_main_loop_new(NULL, FALSE);
 
@@ -222,15 +250,20 @@ int main(int argc, char *argv[]){
 
   printf("libpurple initialized. Running version %s.\n", purple_core_get_version()); //I like to see the version number
 
+  cred_t *c = read_creds("./.creds");
+  
   connect_to_signals();
 
-  PurpleAccount *account = purple_account_new("email@gmail.com", "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.
-  purple_account_set_password(account, "PASSWORD");
+  PurpleAccount *account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.
+  purple_account_set_password(account, c->pw);
 
   purple_accounts_add(account);
   purple_account_set_enabled(account, UI_ID, TRUE);
 
   g_main_loop_run(loop);
 
+  free(c->un);
+  free(c->pw);
+  free(c);
   return 0;
 }

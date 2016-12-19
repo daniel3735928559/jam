@@ -4,6 +4,9 @@
  */
 
 #include "purple.h"
+#include "zmq.h"
+#include "libmango.h"
+#include "cJSON/cJSON.h"
 
 #include <glib.h>
 
@@ -24,6 +27,22 @@
 #define CUSTOM_PLUGIN_PATH     ""
 #define PLUGIN_SAVE_PREF       "/purple/user/plugins/saved"
 #define UI_ID                  "user"
+
+struct m_node {
+  char *version;
+  char *node_id;
+  const char **ports;
+  int num_ports;
+  char debug;
+  char *server_addr;
+  m_interface_t *interface;
+  m_serialiser_t *serialiser;
+  m_transport_t *local_gateway;
+  m_dataflow_t *dataflow;
+  void *zmq_context;
+};
+
+m_node_t *mnode;
 
 /**
  * The following eventloop functions are used in both pidgin and purple-text. If your
@@ -202,10 +221,24 @@ static void signed_on(PurpleConnection *gc){
   printf("Account connected: \"%s\" (%s)\n", purple_account_get_username(account), purple_account_get_protocol_id(account));
 }
 
+void try_to_rx(){
+  void *sock = mnode->local_gateway->socket;
+  int val;
+  size_t len;
+  int ret = zmq_getsockopt(sock, ZMQ_EVENTS, &val, &len);
+  while(val & ZMQ_POLLIN){
+    printf("%d %d %d %d %d\n", ret, val, len, ZMQ_POLLIN, ZMQ_POLLOUT);
+    printf("TRYING\n");
+    m_dataflow_recv(mnode->dataflow);
+    ret = zmq_getsockopt(sock, ZMQ_EVENTS, &val, &len);
+  }
+}
+
 static void received_im_msg(PurpleAccount *account, char *sender, char *message, PurpleConversation *conv, PurpleMessageFlags flags){
   if (conv==NULL){
     conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account, sender);
   }
+  
   printf("(%s) %s (%s): %s\n", purple_utf8_strftime("%H:%M:%S", NULL), sender, purple_conversation_get_name(conv), message);
 }
 
@@ -248,8 +281,7 @@ void error(const char *msg)
     exit(0);
 }
 
-static gboolean gio_in(GIOChannel *gio, GIOCondition condition, gpointer data)
-{
+static gboolean gio_in(GIOChannel *gio, GIOCondition condition, gpointer data){
   GIOStatus ret;
   GError *err = NULL;
   gchar *msg;
@@ -269,9 +301,7 @@ static gboolean gio_in(GIOChannel *gio, GIOCondition condition, gpointer data)
   return TRUE;
 }
 
-
-int connect_sock(const char *hostname, int port)
-{
+int connect_sock(const char *hostname, int port){
     int sockfd, portno, n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
@@ -316,6 +346,58 @@ void init_sock(){
     g_error ("Cannot add watch on GIOChannel!\n");
 }
 
+
+static gboolean gio_mango_in(GIOChannel *gio, GIOCondition condition, gpointer data){
+  printf("SOMETHING IN\n");
+
+  if (condition & G_IO_HUP)
+    g_error ("Read end of pipe died!\n");
+
+  try_to_rx();
+
+  return TRUE;
+}
+
+cJSON *excite(m_node_t *node, cJSON *header, cJSON *args){
+  cJSON *ans = cJSON_CreateObject();
+  char *s = cJSON_GetObjectItem(args,"str")->valuestring;
+  unsigned long l = strlen(s);
+  char *excited = malloc(l+2);
+  printf("%s!\n",cJSON_GetObjectItem(args,"str")->valuestring);
+  sprintf(excited, "%s!",cJSON_GetObjectItem(args,"str")->valuestring);
+  cJSON_AddStringToObject(ans,"excited",excited);
+  return ans;
+}
+
+int connect_mango(){
+  setenv("MANGO_ID","jam",1);
+  setenv("MC_ADDR","tcp://localhost:1212",1);
+  mnode = m_node_new(0);
+  m_node_add_interface(mnode, "./jam.yaml");
+  m_node_handle(mnode, "excite", excite);
+  void *sock = mnode->local_gateway->socket;
+  int val;
+  size_t len = sizeof(val);
+  int ret = zmq_getsockopt(sock, ZMQ_FD, &val, &len);
+  printf("%d %d\n", ret, val);
+  try_to_rx();
+  return val;
+}
+
+void init_mango(){
+  GIOChannel *gio;
+  int fd = connect_mango();
+  gio = g_io_channel_unix_new(fd);
+  if (!gio)
+    g_error ("Cannot create new GIOChannel!\n");
+  
+  if (!g_io_add_watch (gio, G_IO_IN | G_IO_ERR | G_IO_HUP, gio_mango_in, NULL))
+    g_error ("Cannot add watch on GIOChannel!\n");
+  
+  m_node_ready(mnode);
+  try_to_rx();
+}
+
 int main(int argc, char *argv[]){
   GMainLoop *loop = g_main_loop_new(NULL, FALSE);
 
@@ -332,7 +414,7 @@ int main(int argc, char *argv[]){
 
   cred_t *c = read_creds("./.creds");
 
-  init_sock();
+  init_mango();
   connect_to_signals();
 
   PurpleAccount *account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.

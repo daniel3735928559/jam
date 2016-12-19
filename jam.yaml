@@ -1,0 +1,7 @@
+excite:
+  args:
+    str:
+      type: string
+  rets:
+    excited:
+      type: string

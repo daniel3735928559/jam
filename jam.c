@@ -238,8 +238,19 @@ static void received_im_msg(PurpleAccount *account, char *sender, char *message,
   if (conv==NULL){
     conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account, sender);
   }
-  
-  printf("(%s) %s (%s): %s\n", purple_utf8_strftime("%H:%M:%S", NULL), sender, purple_conversation_get_name(conv), message);
+
+  if(mnode){
+    printf("CONNECTED (%s) %s (%s): %s\n", purple_utf8_strftime("%H:%M:%S", NULL), sender, purple_conversation_get_name(conv), message);
+    cJSON *im_recv_args = cJSON_CreateObject();
+    cJSON_AddStringToObject(im_recv_args, "sender", sender);
+    cJSON_AddStringToObject(im_recv_args, "conv", purple_conversation_get_name(conv));
+    cJSON_AddStringToObject(im_recv_args, "message", message);
+    m_node_send(mnode,"reply",im_recv_args,"stdio");
+  }
+  else{
+    printf("NOT CONNECTED (%s) %s (%s): %s\n", purple_utf8_strftime("%H:%M:%S", NULL), sender, purple_conversation_get_name(conv), message);
+
+  }
 }
 
 static void connect_to_signals(void){

@@ -1,7 +1,9 @@
-excite:
-  args:
+name: jam
+inputs:
+  excite:
     str:
       type: string
-  rets:
-    excited:
+outputs:
+  excited:
+    str:
       type: string

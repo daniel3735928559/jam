@@ -234,6 +234,8 @@ void try_to_rx(){
   }
 }
 
+
+
 static void received_im_msg(PurpleAccount *account, char *sender, char *message, PurpleConversation *conv, PurpleMessageFlags flags){
   if (conv==NULL){
     conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account, sender);
@@ -245,7 +247,7 @@ static void received_im_msg(PurpleAccount *account, char *sender, char *message,
     cJSON_AddStringToObject(im_recv_args, "sender", sender);
     cJSON_AddStringToObject(im_recv_args, "conv", purple_conversation_get_name(conv));
     cJSON_AddStringToObject(im_recv_args, "message", message);
-    m_node_send(mnode,"reply",im_recv_args,"stdio");
+    m_node_send(mnode,"im_recv",im_recv_args,"stdio");
   }
   else{
     printf("NOT CONNECTED (%s) %s (%s): %s\n", purple_utf8_strftime("%H:%M:%S", NULL), sender, purple_conversation_get_name(conv), message);
@@ -380,11 +382,27 @@ cJSON *excite(m_node_t *node, cJSON *header, cJSON *args){
   return ans;
 }
 
+cJSON *m_im_send(m_node_t *node, cJSON *header, cJSON *args){
+  cJSON *ans = cJSON_CreateObject();
+  char *buf = cJSON_GetObjectItem(args,"message")->valuestring;
+
+    if (conv==NULL){
+    conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account, sender);
+  }
+  unsigned long l = strlen(s);
+  char *excited = malloc(l+2);
+  printf("%s!\n",cJSON_GetObjectItem(args,"str")->valuestring);
+  sprintf(excited, "%s!",cJSON_GetObjectItem(args,"str")->valuestring);
+  cJSON_AddStringToObject(ans,"excited",excited);
+  return ans;
+}
+
 int connect_mango(){
   setenv("MANGO_ID","jam",1);
   setenv("MC_ADDR","tcp://localhost:1212",1);
   mnode = m_node_new(0);
   m_node_add_interface(mnode, "./jam.yaml");
+  m_node_handle(node, "im_send", m_im_send);
   m_node_handle(mnode, "excite", excite);
   void *sock = mnode->local_gateway->socket;
   int val;

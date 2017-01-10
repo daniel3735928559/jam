@@ -395,15 +395,6 @@ cJSON *m_im_send(m_node_t *node, cJSON *header, cJSON *args){
   PurpleConvIm *im_data = purple_conversation_get_im_data(conv);
   printf("im_send %s to %s\n", msg, name);
   purple_conv_im_send(im_data, msg);
-  /*
-
-        account = findaccount(accountname, protocol)
-        conversation = cpurple.PurpleConversationNew(1, account, params["screenname"])
-        if "message" in params:
-            im = cpurple.PurpleConversationGetImData(conversation)
-            purple.PurpleConvImSend(im, params["message"])
-
-   */
 }
 
 int connect_mango(){

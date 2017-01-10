@@ -4,6 +4,8 @@
  */
 
 #include "purple.h"
+#include "conversation.h"
+#include "account.h"
 #include "zmq.h"
 #include "libmango.h"
 #include "cJSON/cJSON.h"
@@ -42,6 +44,7 @@ struct m_node {
   void *zmq_context;
 };
 
+PurpleAccount *my_account;
 m_node_t *mnode;
 
 /**
@@ -384,25 +387,32 @@ cJSON *excite(m_node_t *node, cJSON *header, cJSON *args){
 
 cJSON *m_im_send(m_node_t *node, cJSON *header, cJSON *args){
   cJSON *ans = cJSON_CreateObject();
-  char *buf = cJSON_GetObjectItem(args,"message")->valuestring;
+  char *name = cJSON_GetObjectItem(args,"name")->valuestring;
+  char *msg = cJSON_GetObjectItem(args,"message")->valuestring;
 
-    if (conv==NULL){
-    conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account, sender);
-  }
-  unsigned long l = strlen(s);
-  char *excited = malloc(l+2);
-  printf("%s!\n",cJSON_GetObjectItem(args,"str")->valuestring);
-  sprintf(excited, "%s!",cJSON_GetObjectItem(args,"str")->valuestring);
-  cJSON_AddStringToObject(ans,"excited",excited);
-  return ans;
+  PurpleAccount *account = my_account;
+  PurpleConversation *conv = purple_conversation_new(PURPLE_CONV_TYPE_IM, account, name);
+  PurpleConvIm *im_data = purple_conversation_get_im_data(conv);
+  printf("im_send %s to %s\n", msg, name);
+  purple_conv_im_send(im_data, msg);
+  /*
+
+        account = findaccount(accountname, protocol)
+        conversation = cpurple.PurpleConversationNew(1, account, params["screenname"])
+        if "message" in params:
+            im = cpurple.PurpleConversationGetImData(conversation)
+            purple.PurpleConvImSend(im, params["message"])
+
+   */
 }
 
 int connect_mango(){
   setenv("MANGO_ID","jam",1);
   setenv("MC_ADDR","tcp://localhost:1212",1);
+  printf("Connecting...\n");
   mnode = m_node_new(0);
   m_node_add_interface(mnode, "./jam.yaml");
-  m_node_handle(node, "im_send", m_im_send);
+  m_node_handle(mnode, "im_send", m_im_send);
   m_node_handle(mnode, "excite", excite);
   void *sock = mnode->local_gateway->socket;
   int val;
@@ -410,6 +420,7 @@ int connect_mango(){
   int ret = zmq_getsockopt(sock, ZMQ_FD, &val, &len);
   printf("%d %d\n", ret, val);
   try_to_rx();
+  printf("Connected!\n");
   return val;
 }
 
@@ -446,11 +457,11 @@ int main(int argc, char *argv[]){
   init_mango();
   connect_to_signals();
 
-  PurpleAccount *account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.
-  purple_account_set_password(account, c->pw);
+  my_account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.
+  purple_account_set_password(my_account, c->pw);
 
-  purple_accounts_add(account);
-  purple_account_set_enabled(account, UI_ID, TRUE);
+  purple_accounts_add(my_account);
+  purple_account_set_enabled(my_account, UI_ID, TRUE);
 
   g_main_loop_run(loop);
 

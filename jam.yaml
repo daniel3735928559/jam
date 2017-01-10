@@ -3,7 +3,19 @@ inputs:
   excite:
     str:
       type: string
+  im_send:
+    name:
+      type: string
+    message:
+      type: string
 outputs:
+  im_recv:
+    message:
+      type: string
+    sender:
+      type: string
+    conv:
+      type: string
   excited:
     str:
       type: string

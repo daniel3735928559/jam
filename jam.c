@@ -25,7 +25,8 @@
 #include <netinet/in.h>
 #include <netdb.h> 
 
-#define CUSTOM_USER_DIRECTORY  "/dev/null"
+#define CUSTOM_USER_DIRECTORY  "../../.purple/"
+//#define CUSTOM_USER_DIRECTORY  "/dev/null"
 #define CUSTOM_PLUGIN_PATH     ""
 #define PLUGIN_SAVE_PREF       "/purple/user/plugins/saved"
 #define UI_ID                  "user"
@@ -46,6 +47,7 @@ struct m_node {
 
 PurpleAccount *my_account;
 m_node_t *mnode;
+int mango_ready = 0;
 
 /**
  * The following eventloop functions are used in both pidgin and purple-text. If your
@@ -228,13 +230,16 @@ void try_to_rx(){
   void *sock = mnode->local_gateway->socket;
   int val;
   size_t len;
-  int ret = zmq_getsockopt(sock, ZMQ_EVENTS, &val, &len);
-  while(val & ZMQ_POLLIN){
-    printf("%d %d %d %d %d\n", ret, val, len, ZMQ_POLLIN, ZMQ_POLLOUT);
+  //int ret = zmq_getsockopt(sock, ZMQ_EVENTS, &val, &len);
+  //printf("VAL %d\n",val);
+  //while(val & ZMQ_POLLIN){
+  //printf("%d %d %d %d %d\n", ret, val, len, ZMQ_POLLIN, ZMQ_POLLOUT);
+  if(mango_ready){
     printf("TRYING\n");
     m_dataflow_recv(mnode->dataflow);
-    ret = zmq_getsockopt(sock, ZMQ_EVENTS, &val, &len);
   }
+    //ret = zmq_getsockopt(sock, ZMQ_EVENTS, &val, &len);
+    //}
 }
 
 
@@ -250,7 +255,7 @@ static void received_im_msg(PurpleAccount *account, char *sender, char *message,
     cJSON_AddStringToObject(im_recv_args, "sender", sender);
     cJSON_AddStringToObject(im_recv_args, "conv", purple_conversation_get_name(conv));
     cJSON_AddStringToObject(im_recv_args, "message", message);
-    m_node_send(mnode,"im_recv",im_recv_args,"stdio");
+    m_node_send(mnode,"im_recv",im_recv_args,NULL, NULL);
   }
   else{
     printf("NOT CONNECTED (%s) %s (%s): %s\n", purple_utf8_strftime("%H:%M:%S", NULL), sender, purple_conversation_get_name(conv), message);
@@ -374,7 +379,7 @@ static gboolean gio_mango_in(GIOChannel *gio, GIOCondition condition, gpointer d
   return TRUE;
 }
 
-cJSON *excite(m_node_t *node, cJSON *header, cJSON *args){
+cJSON *excite(m_node_t *node, cJSON *header, cJSON *args, m_result_t *result){
   cJSON *ans = cJSON_CreateObject();
   char *s = cJSON_GetObjectItem(args,"str")->valuestring;
   unsigned long l = strlen(s);
@@ -385,7 +390,7 @@ cJSON *excite(m_node_t *node, cJSON *header, cJSON *args){
   return ans;
 }
 
-cJSON *m_im_send(m_node_t *node, cJSON *header, cJSON *args){
+cJSON *m_im_send(m_node_t *node, cJSON *header, cJSON *args, m_result_t *result){
   cJSON *ans = cJSON_CreateObject();
   char *name = cJSON_GetObjectItem(args,"name")->valuestring;
   char *msg = cJSON_GetObjectItem(args,"message")->valuestring;
@@ -398,16 +403,17 @@ cJSON *m_im_send(m_node_t *node, cJSON *header, cJSON *args){
 }
 
 int connect_mango(){
-  setenv("MANGO_ID","jam",1);
-  setenv("MC_ADDR","tcp://localhost:1212",1);
   printf("Connecting...\n");
+  printf("hello from jam.c\n");
   mnode = m_node_new(0);
+  printf("GETTING\n");
   m_node_add_interface(mnode, "./jam.yaml");
   m_node_handle(mnode, "im_send", m_im_send);
   m_node_handle(mnode, "excite", excite);
   void *sock = mnode->local_gateway->socket;
   int val;
   size_t len = sizeof(val);
+  printf("GETTING\n");
   int ret = zmq_getsockopt(sock, ZMQ_FD, &val, &len);
   printf("%d %d\n", ret, val);
   try_to_rx();
@@ -425,8 +431,8 @@ void init_mango(){
   if (!g_io_add_watch (gio, G_IO_IN | G_IO_ERR | G_IO_HUP, gio_mango_in, NULL))
     g_error ("Cannot add watch on GIOChannel!\n");
   
-  m_node_ready(mnode);
   try_to_rx();
+  mango_ready = 1;
 }
 
 int main(int argc, char *argv[]){
@@ -443,21 +449,33 @@ int main(int argc, char *argv[]){
 
   printf("libpurple initialized. Running version %s.\n", purple_core_get_version()); //I like to see the version number
 
-  cred_t *c = read_creds("./.creds");
+  //cred_t *c = read_creds("./.creds");
 
   init_mango();
   connect_to_signals();
 
-  my_account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.
-  purple_account_set_password(my_account, c->pw);
+  //my_account = purple_account_new(c->un, "prpl-jabber"); //this could be prpl-aim, prpl-yahoo, prpl-msn, prpl-icq, etc.
+  //purple_account_set_password(my_account, c->pw);
 
-  purple_accounts_add(my_account);
-  purple_account_set_enabled(my_account, UI_ID, TRUE);
+  //purple_accounts_add(my_account);
+  //purple_account_set_enabled(my_account, UI_ID, TRUE);
 
+  purple_accounts_init();
+  sleep(5);
+  GList *list = purple_accounts_get_all();
+  GList *elem;
+  PurpleAccount *acc;
+  printf("ASD %p\n",list);
+  for(elem = list; elem; elem = elem->next) {
+    acc = elem->data;
+    printf("a %p\n",elem);
+    purple_account_set_enabled(acc, UI_ID, TRUE);
+  }
+  
   g_main_loop_run(loop);
 
-  free(c->un);
-  free(c->pw);
-  free(c);
+  //free(c->un);
+  //free(c->pw);
+  //free(c);
   return 0;
 }

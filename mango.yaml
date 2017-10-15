@@ -1,4 +1,10 @@
-jam:
+jam_c:
   lang: c
   if: jam.yaml
   run: jam
+
+jam:
+  lang: py
+  if: jam.yaml
+  run: python dbus/jam.py
+  

@@ -3,6 +3,7 @@ from IPython import embed
 import dbus, gobject, re, sys, time, subprocess, os
 import zmq
 from libmango import *
+from fuzzywuzzy import process
 
 class jam(m_node):
     def __init__(self):
@@ -20,6 +21,20 @@ class jam(m_node):
         obj = bus.get_object("im.pidgin.purple.PurpleService", "/im/pidgin/purple/PurpleObject")
         self.purple = dbus.Interface(obj, "im.pidgin.purple.PurpleInterface")
 
+        self.accounts = self.purple.PurpleAccountsGetAll()
+        self.buddies = {}
+        for acc in self.accounts:
+            bids = self.purple.PurpleFindBuddies(acc, "")
+            
+            for bid in bids:
+                buddy = {
+                    "id": bid,
+                    "name": self.purple.PurpleBuddyGetName(bid),
+                    "alias": self.purple.PurpleBuddyGetAlias(bid),
+                    "account_id": acc
+                }
+                self.buddies[buddy["alias"]] = buddy
+        self.match_quality_threshold = 80
         self.run()
 
     def purple_recv(self):
@@ -31,9 +46,15 @@ class jam(m_node):
         self.debug_print("PRPL DIED")
                         
     def send(self, header, args):
-        self.debug_print("SENDING",header,args)
-        target = self.purple.PurpleConvIm(int(args['conv']))
-        self.purple.PurpleConvImSend(target, args['msg'])
+        target,quality = process.extractOne(args['to'],self.buddies.keys())
+        if quality < self.match_quality_threshold:
+            self.debug_print("target={} not close enough to best match={}".format(target,args['to']))
+            return
+        buddy = self.buddies[target]
+        conv = self.purple.PurpleConversationNew(1, int(buddy['account_id']), str(buddy['name']))
+        im = self.purple.PurpleConvIm(conv)
+        self.debug_print("SENDING",header,args,target,buddy,conv,im)
+        self.purple.PurpleConvImSend(im, args['msg'])
 
         
 jam()

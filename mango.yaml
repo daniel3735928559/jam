@@ -1,0 +1,4 @@
+jam:
+  lang: c
+  if: jam.yaml
+  run: jam

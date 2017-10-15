@@ -1,9 +1,6 @@
 name: jam
 description: asda
 inputs:
-  excite:
-    str:
-      type: string
   im_send:
     name:
       type: string
@@ -16,7 +13,4 @@ outputs:
     sender:
       type: string
     conv:
-      type: string
-  excited:
-    str:
       type: string

@@ -4,7 +4,12 @@ inputs:
   im_send:
     name:
       type: string
-    message:
+    msg:
+      type: string
+  im_send_to:
+    conv:
+      type: string
+    msg:
       type: string
 outputs:
   im_recv:
